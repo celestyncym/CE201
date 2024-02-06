@@ -19,11 +19,12 @@ else:
 
 
 def create_account():
-    print("Create a new account: ")
+    print("Create a new account ")
     name = input("Enter your name: ")
     username = input("Enter username: ")
     password = input("Enter password: ")
-    role = input("Enter role: ")
+    role = input("Enter role (staff, hrofficer, hrsupervisor): ")
+    print("1. Human Resources\n2. Marketing\n3. Finance\n4. Customer Support\n5. Information Technology\n6. Operations")
 
     # ask for department input only for staff and hrofficer roles
     department = None
@@ -59,7 +60,7 @@ def create_account():
     success = register_user_in_db(username, password, role, name, department)
 
     if success:
-        print("Account created successfully")
+        print("Account created successfully!")
     else:
         print("Account creation failed.")
 
@@ -131,8 +132,36 @@ def apply_for_course(user_id, course_id, start_date):
         return False
 
 
-# role-specific menu functions
+def create_course():
+    print("Create a new course ")
+    name = input("Enter course name: ")
+    category = input("Enter category (Core or Soft): ")
+    hours = input("Enter hours: ")
+    print("1. Human Resources\n2. Marketing\n3. Finance\n4. Customer Support\n5. Information Technology\n6. Operations")
+    department = input("\nEnter department: ")
 
+    def add_course_in_db(name, category, hours, department):
+        try:
+            command_handler.execute(
+                "INSERT INTO courses (name, category, hours, department_id) VALUES (%s, %s, %s, %s)",
+                (name, category, hours, department))
+            db.commit()
+
+            return True
+        except Exception as e:
+            print(f"Error: {e}")
+            db.rollback()
+            return False
+
+    success = add_course_in_db(name, category, hours, department)
+
+    if success:
+        print("\nCourse added successfully!")
+    else:
+        print("Failed to add course.")
+
+
+# role-specific menu functions
 def staff_menu(user_id, name, department, staff_id):
     while True:
         # fetch department name based on the department_id
@@ -201,7 +230,7 @@ def staff_menu(user_id, name, department, staff_id):
                     for i, course in enumerate(applied_courses, start=1):
                         print(
                             f"{i}. {course[0]}, Category: {course[1]} Skills, Hours: {course[2]}, Start Date: {course[3]}")
-                    attend_course = input("\n Which course would you like to attend?")
+                    attend_course = input("\nWhich course would you like to attend?")
                 else:
                     print("You are not currently attending any courses.")
 
@@ -219,30 +248,30 @@ def staff_menu(user_id, name, department, staff_id):
 
 
 def hrofficer_menu(user_id, name):
-    print(f"Welcome to the HR Officer menu, {name}!")
+    print(f"\nWelcome to the HR Officer menu, {name}!")
     print("What would you like to do?")
     print("1. Adjust training hours")
     print("2. Generate department report")
     print("3. Generate staff report")
 
-    user_option = input("Option: ")
+    user_option = input("\nOption: ")
 
 
 def hrsupervisor_menu(user_id, name):
-    print(f"Welcome to the HR Supervisor menu, {name}")
+    print(f"\nWelcome to the HR Supervisor menu, {name}")
     print("What would you like to do?")
     print("1. Manage HR Officers")
     print("2. Adjust training hours")
     print("3. Add new course")
     print("4. Create new user account")
 
-    user_option = input("Option: ")
+    user_option = input("\nOption: ")
     if user_option == "1":
         print("")
     elif user_option == "2":
         print("")
     elif user_option == "3":
-        print("")
+        create_course()
     elif user_option == "4":
         create_account()
 
