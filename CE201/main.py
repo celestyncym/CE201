@@ -7,6 +7,7 @@ db = mysql.connect(
     port="3308",
     database="ce201"
 )
+#testtest
 
 command_handler = db.cursor(buffered=True)
 
