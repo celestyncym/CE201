@@ -7,7 +7,7 @@ db = mysql.connect(
     port="3308",
     database="ce201"
 )
-
+# fasdffsd
 command_handler = db.cursor(buffered=True)
 
 if db and db.is_connected():
