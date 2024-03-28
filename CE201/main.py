@@ -3,14 +3,14 @@ from datetime import datetime
 import mysql.connector as mysql
 
 db = mysql.connect(
-    host="localhost",
-    user="root",
-    password="",
-    port="3308",
-    database="ce201"
+    host="straits-system.c9m4skkmarao.ap-southeast-1.rds.amazonaws.com",
+    user="admin",
+    password="ce201team2",
+    port="3306",
+    database="straits_system"
 )
 
-command_handler = db.cursor(buffered=True)
+query = db.cursor(buffered=True)
 
 if db and db.is_connected():
     print("Successfully connected to DB!")
@@ -23,32 +23,43 @@ def create_account():
     name = input("Enter your name: ")
     username = input("Enter username: ")
     password = input("Enter password: ")
-    role = input("Enter role (staff, hrofficer, hrsupervisor): ")
+    print("1. Staff\n2. HR Officer\n3. HR Supervisor")
+    role_option = input("Enter role: ")
+    role_mapping = {
+        "1": "Staff",
+        "2": "HR Officer",
+        "3": "HR Supervisor"
+    }
+    role = role_mapping.get(role_option)
+    if role is None:
+        print("Invalid option!")
+        return
+
     print("1. Human Resources\n2. Marketing\n3. Finance\n4. Customer Support\n5. Information Technology\n6. Operations")
 
     # ask for department input only for staff and hrofficer roles
     department = None
-    if role in ["staff", "hrofficer"]:
+    if role in ["Staff", "HR Officer"]:
         department = input("Enter department: ")
 
     def register_user_in_db(username, password, role, name, department):
         try:
             # insert user data into users table
-            command_handler.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)",
+            query.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)",
                                     (username, password, role))
             db.commit()
-            user_id = command_handler.lastrowid
-            if role == "staff":
+            user_id = query.lastrowid
+            if role == "Staff":
                 # insert staff data into staff table
-                command_handler.execute("INSERT INTO staff (user_id, name, department_id) VALUES (%s, %s, %s)",
+                query.execute("INSERT INTO staff (user_id, name, department_id) VALUES (%s, %s, %s)",
                                         (user_id, name, department))
-            elif role == "hrofficer":
+            elif role == "HR Officer":
                 # insert hrofficer data into hrofficers table
-                command_handler.execute("INSERT INTO hrofficers (user_id, name, department_id) VALUES (%s, %s, %s)",
+                query.execute("INSERT INTO hrofficers (user_id, name, department_id) VALUES (%s, %s, %s)",
                                         (user_id, name, department))
-            elif role == "hrsupervisor":
+            elif role == "HR Supervisor":
                 # insert hrsupervisor data into hrsupervisors table
-                command_handler.execute("INSERT INTO hrsupervisors (user_id, name) VALUES (%s, %s)", (user_id, name))
+                query.execute("INSERT INTO hrsupervisors (user_id, name) VALUES (%s, %s)", (user_id, name))
             db.commit()
 
             return True
@@ -71,12 +82,12 @@ def login():
     password = input("Enter password: ")
 
     # query db to check user data and fetch data accordingly
-    command_handler.execute("""
+    query.execute("""
         SELECT u.user_id, u.username, u.role,
                CASE
-                 WHEN u.role = 'staff' THEN s.name
-                 WHEN u.role = 'hrofficer' THEN ho.name
-                 WHEN u.role = 'hrsupervisor' THEN hs.name
+                 WHEN u.role = 'Staff' THEN s.name
+                 WHEN u.role = 'HR Officer' THEN ho.name
+                 WHEN u.role = 'HR Supervisor' THEN hs.name
                END AS user_name,
                s.department_id,
                s.staff_id
@@ -87,18 +98,18 @@ def login():
         WHERE u.username = %s AND u.password = %s
     """, (username, password))
 
-    user_data = command_handler.fetchone()
+    user_data = query.fetchone()
 
     if user_data:
         # fetch user data
         user_id, username, role, name, department, staff_id = user_data
 
         # open specific menu for each role
-        if role == "staff":
+        if role == "Staff":
             staff_menu(user_id, name, department, staff_id)
-        elif role == "hrofficer":
-            hrofficer_menu(user_id, name)
-        elif role == "hrsupervisor":
+        elif role == "HR Officer":
+            hrofficer_menu(user_id, name, department)
+        elif role == "HR Supervisor":
             hrsupervisor_menu(user_id, name)
         else:
             print("Invalid role")
@@ -106,19 +117,19 @@ def login():
         print("Invalid username or password")
 
 
-def apply_for_course(user_id, course_id, start_date):
+def apply_for_course(user_id, course_id, date_enrolled):
     try:
         # fetch staff_id associated with the user_id
-        command_handler.execute("SELECT staff_id FROM staff WHERE user_id = %s", (user_id,))
-        result = command_handler.fetchone()
+        query.execute("SELECT staff_id FROM staff WHERE user_id = %s", (user_id,))
+        result = query.fetchone()
 
         if result:
             staff_id = result[0]
 
             # insert the course into the applied_courses table
-            command_handler.execute(
-                "INSERT INTO applied_courses (staff_id, course_id, startdate) VALUES (%s, %s, %s)",
-                (staff_id, course_id, start_date)
+            query.execute(
+                "INSERT INTO staffCourses (staff_id, course_id, date_enrolled) VALUES (%s, %s, %s)",
+                (staff_id, course_id, date_enrolled)
             )
             db.commit()
 
@@ -142,8 +153,8 @@ def create_course():
 
     def add_course_in_db(name, category, hours, department):
         try:
-            command_handler.execute(
-                "INSERT INTO courses (name, category, hours, department_id) VALUES (%s, %s, %s, %s)",
+            query.execute(
+                "INSERT INTO courses (course_name, category, hours, department_id) VALUES (%s, %s, %s, %s)",
                 (name, category, hours, department))
             db.commit()
 
@@ -165,16 +176,16 @@ def create_course():
 def staff_menu(user_id, name, department, staff_id):
     while True:
         # fetch department name based on the department_id
-        command_handler.execute("SELECT name FROM departments WHERE department_id = %s", (department,))
-        department_name = command_handler.fetchone()[0]
+        query.execute("SELECT name FROM departments WHERE department_id = %s", (department,))
+        department_name = query.fetchone()[0]
 
         # fetch relevant courses
-        command_handler.execute("""
+        query.execute("""
             SELECT c.course_id, c.name AS course_name, c.category, c.hours
             FROM courses c
             WHERE c.department_id = %s
         """, (department,))
-        courses = command_handler.fetchall()
+        courses = query.fetchall()
 
         print(f"\nWelcome to the Staff menu, {name}!")
         print("What would you like to do?")
@@ -217,13 +228,13 @@ def staff_menu(user_id, name, department, staff_id):
         elif user_option == "2":
             try:
                 # fetch the user's applied courses
-                command_handler.execute("""
-                    SELECT c.name AS course_name, c.category, c.hours, ac.startdate
-                    FROM applied_courses ac
-                    JOIN courses c ON ac.course_id = c.course_id
-                    WHERE ac.staff_id = %s
+                query.execute("""
+                    SELECT c.name AS course_name, c.category, c.hours, sc.date_enrolled
+                    FROM staffCourses AS sc
+                    JOIN courses c ON sc.course_id = c.course_id
+                    WHERE sc.staff_id = %s
                 """, (staff_id,))
-                applied_courses = command_handler.fetchall()
+                applied_courses = query.fetchall()
 
                 if applied_courses:
                     print("You have currently applied for these courses:")
@@ -247,7 +258,7 @@ def staff_menu(user_id, name, department, staff_id):
             print("Invalid option.")
 
 
-def hrofficer_menu(user_id, name):
+def hrofficer_menu(user_id, name, officer_id, department):
     print(f"\nWelcome to the HR Officer menu, {name}!")
     print("What would you like to do?")
     print("1. Adjust training hours")
