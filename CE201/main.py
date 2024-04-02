@@ -117,7 +117,63 @@ def login():
         print("Invalid username or password")
 
 
-def apply_for_course(user_id, course_id, date_enrolled):
+def apply_for_course(user_id, name, department, staff_id):
+    # fetch department name based on the department_id
+    query.execute("SELECT department_name FROM departments WHERE department_id = %s", (department,))
+    department_name = query.fetchone()[0]
+
+    # fetch relevant courses
+    query.execute("""
+         SELECT c.course_id, c.course_name, c.category, c.hours
+         FROM courses AS c
+         WHERE c.department_id = %s
+     """, (department,))
+    courses = query.fetchall()
+    print(f"\nThese are the courses available for your department, {department_name}:")
+    for i, course in enumerate(courses, start=1):
+        print(f"{i}. {course[1]} | Category: {course[2]} Skills | Hours: {course[3]}")
+
+    course_selection = input("\nWhich course would you like to apply for? (Enter '0' to go back): ")
+
+    if course_selection == '0':
+        return
+
+    try:
+        selected_course = courses[int(course_selection) - 1]
+        print(f"You have selected: {selected_course[1]}")
+
+        # check if staff has already attended the selected course
+        query.execute("""
+                            SELECT * FROM staffCourses 
+                            WHERE staff_id = %s AND course_id = %s AND attended = 'yes'
+                        """, (staff_id, selected_course[0]))
+        already_attended = query.fetchone()
+
+        if already_attended:
+            print("You have already attended this course before, you will not be rewarded any hours even if "
+                  "you attend it again!")
+            proceed = input("Would you still like to proceed? y/n: ")
+            if proceed.lower() != "y":
+                return
+            else:
+                # prompt staff for commencement date
+                date_input = input("Enter the date you want to attend the course (YYYY-MM-DD): ")
+                try:
+                    date = datetime.strptime(date_input, "%Y-%m-%d")
+                    success = save_course_to_db(user_id, selected_course[0], date)
+                    if success:
+                        print(
+                            f"You have successfully applied for the course {selected_course[1]}, scheduled on {date}")
+                    else:
+                        print("Failed to apply for the course. Please try again.")
+                except ValueError:
+                    print("Invalid date format! Please enter the date in YYYY-MM-DD format.")
+
+    except (ValueError, IndexError):
+        print("Invalid input! Please enter a valid number.")
+
+
+def save_course_to_db(user_id, course_id, date_enrolled):
     try:
         # fetch staff_id associated with the user_id
         query.execute("SELECT staff_id FROM staff WHERE user_id = %s", (user_id,))
@@ -141,6 +197,119 @@ def apply_for_course(user_id, course_id, date_enrolled):
         print(f"Error: {e}")
         db.rollback()
         return False
+
+
+def attend_course(staff_id):
+    try:
+        # fetch staff's applied courses from staffCourses table
+        query.execute("""
+                SELECT c.course_name, c.category, c.hours, sc.date_enrolled, sc.attended, sc.course_id
+                FROM staffCourses AS sc
+                JOIN courses c ON sc.course_id = c.course_id
+                WHERE sc.staff_id = %s
+            """, (staff_id,))
+
+        applied_courses = query.fetchall()
+
+        if applied_courses:
+            print("You have currently applied for these courses:")
+
+            for i, course in enumerate(applied_courses, start=1):
+                print(
+                    f"{i}. {course[0]}, Category: {course[1]} Skills, Hours: {course[2]}, Start Date: {course[3]}, Attended: {course[4]}")
+
+            course_selection = input("\nWhich course would you like to attend? (Enter '0' to go back): ")
+
+            if course_selection == '0':
+                return
+
+            try:
+                selected_index = int(course_selection)
+
+                if 1 <= selected_index <= len(applied_courses):
+                    selected_course = applied_courses[selected_index - 1]
+                    print(f"You have selected: {selected_course[0]}")
+
+                    # check if course has already been attended
+                    if selected_course[4] == 'yes':
+                        print("You have already attended this course!")
+
+                    else:
+                        # update attended status to yes
+                        query.execute("""
+                                UPDATE staffCourses 
+                                SET attended = 'yes'
+                                WHERE staff_id = %s AND course_id = %s
+                            """, (staff_id, selected_course[5]))
+                        db.commit()
+                        print(f"You have successfully attended the course: {selected_course[0]}!")
+                else:
+                    print("Invalid input! Please enter a valid number.")
+
+            except ValueError:
+                print("Invalid input! Please enter a valid number.")
+
+        else:
+            print("You are not currently attending any courses!")
+
+    except Exception as e:
+        print(f"Error fetching applied courses: {e}")
+
+
+def view_hours(staff_id):
+    try:
+        # fetch staff's attended courses with details
+        query.execute("""
+                SELECT c.course_name, c.hours, c.category
+                FROM staffCourses AS sc 
+                JOIN courses c ON sc.course_id = c.course_id 
+                WHERE sc.staff_id = %s AND sc.attended = 'yes'
+            """, (staff_id,))
+        attended_courses = query.fetchall()
+
+        if attended_courses:
+            # initialise sets to store UNIQUE core and soft skills
+            unique_core_courses = set()
+            unique_soft_courses = set()
+
+            # initialise core and soft skill hours to 0
+            total_core_hours = 0
+            total_soft_hours = 0
+
+            # iterate through attended courses to calculate the total hours for respective skill category
+            for course in attended_courses:
+                course_name, hours, category = course
+                if course_name not in unique_core_courses and category == "Core":
+                    unique_core_courses.add(course_name)
+                    total_core_hours += hours
+                elif course_name not in unique_soft_courses and category == "Soft":
+                    unique_soft_courses.add(course_name)
+                    total_soft_hours += hours
+
+            # print
+            print("Your total training hours for the year are...")
+            print(f"Core Skills: {total_core_hours}")
+            print(f"Soft Skills: {total_soft_hours}")
+            print(f"\nTotal Hours Required: {total_hours_required}")
+            print(f"Current Ratio Split (Core/Soft): {default_core_ratio}/{default_soft_ratio}")
+
+            # calculate remaining hours needed
+            remaining_core_hours = max(total_hours_required * (default_core_ratio / 100) - total_core_hours, 0)
+            remaining_soft_hours = max(total_hours_required * (default_soft_ratio / 100) - total_soft_hours, 0)
+
+            print(f"\nRemaining Core Skill Hours Needed: {remaining_core_hours}")
+            print(f"Remaining Soft Skill Hours Needed: {remaining_soft_hours}")
+
+            go_back = input("\nEnter '0' to go back: ")
+
+            if go_back == '0':
+                return
+
+        else:
+            print("You have not attended any courses yet!")
+
+    except Exception as e:
+        print(f"Error fetching attended courses: {e}")
 
 
 def create_course():
@@ -172,21 +341,139 @@ def create_course():
         print("Failed to add course.")
 
 
+# declare global values
+total_hours_required = 100
+default_core_ratio = 50
+default_soft_ratio = 50
+
+
+def adjust_training_hours():
+    while True:
+        print("\nWhat would you like to adjust?")
+        print("1. Course Training Hours")
+        print("2. Split Ratio")
+        print("3. Total Hours Required")
+        print("4. Exit")
+
+        user_option = input("\nOption: ")
+
+        if user_option == "1":
+            try:
+                # fetch all courses from db
+                query.execute("""
+                        SELECT c.course_id, c.course_name, c.category, c.hours, d.department_name 
+                        FROM courses AS c 
+                        JOIN departments AS d ON c.department_id = d.department_id
+                    """)
+                courses = query.fetchall()
+
+                # display courses
+                print("List of all available courses:")
+                for i, course in enumerate(courses, start=1):
+                    print(
+                        f"{i}. {course[1]} | Department: {course[4]} | Category: {course[2]} Skills | Hours: {course[3]}")
+
+                course_selection = input("\nWhich course would you like to adjust? (Enter '0' to go back): ")
+
+                if course_selection == '0':
+                    return
+
+                # validate user input
+                try:
+                    course_index = int(course_selection) - 1
+                    if course_index < 0 or course_index >= len(courses):
+                        raise ValueError
+                except ValueError:
+                    print("Invalid input! Please enter a valid number.")
+                    return
+
+                selected_course = courses[course_index]
+                selected_course_id = selected_course[0]
+                selected_course_name = selected_course[1]
+
+                # prompt user for new training hours
+                new_hours = input(f"Enter new training hours for '{selected_course_name}': ")
+
+                # validate input
+                try:
+                    new_hours = int(new_hours)
+                    if new_hours < 0:
+                        raise ValueError
+                except ValueError:
+                    print("Invalid input! Please enter a positive integer.")
+                    return
+
+                # update course with new training hours
+                query.execute("UPDATE courses SET hours = %s WHERE course_id = %s", (new_hours, selected_course_id))
+                db.commit()
+
+                print(
+                    f"Training hours for '{selected_course_name}' have been successfully adjusted to {new_hours} hours.")
+
+            except Exception as e:
+                print(f"Error adjusting training hours: {e}")
+
+        elif user_option == "2":
+            global default_core_ratio, default_soft_ratio
+            try:
+                print(f"Current Split Ratio: Core Skills: {default_core_ratio}, Soft Skills: {default_soft_ratio}")
+
+                # prompt user for new ratio
+                new_core_ratio = input("Enter the new ratio for Core Skills (between 0 and 100): ")
+                new_soft_ratio = 100 - int(new_core_ratio)
+
+                # validate input
+                try:
+                    new_core_ratio = float(new_core_ratio)
+                    new_soft_ratio = float(new_soft_ratio)
+                    if not 0 <= new_core_ratio <= 100 or not 0 <= new_soft_ratio <= 100 or new_core_ratio + new_soft_ratio != 100:
+                        raise ValueError
+                except ValueError:
+                    print("Invalid input! Value must be between 0 and 100, and have a sum of 100.")
+                    return
+
+                # update default
+                default_core_ratio = new_core_ratio
+                default_soft_ratio = new_soft_ratio
+
+                print("Successfully updated ratio.")
+
+            except Exception as e:
+                print(f"Error adjusting ratio split: {e}")
+
+        elif user_option == "3":
+            global total_hours_required
+            try:
+                print(f"Current Total Hours Required: {total_hours_required}")
+
+                # prompt for new total hours required
+                new_total_hours_required = input("Enter the new total hours required: ")
+
+                # validate input
+                try:
+                    new_total_hours_required = int(new_total_hours_required)
+                    if new_total_hours_required <= 0:
+                        raise ValueError
+                except ValueError:
+                    print("Invalid input! Value must be a positive integer.")
+                    return
+
+                # update total hours required
+                total_hours_required = new_total_hours_required
+                print("Successfully updated the total hours required.")
+
+            except Exception as e:
+                print(f"Error adjusting total hours required: {e}")
+
+        elif user_option == "4":
+            return
+        else:
+            print("Invalid option!")
+
+
 # role-specific menu functions
 def staff_menu(user_id, name, department, staff_id):
     while True:
-        # fetch department name based on the department_id
-        query.execute("SELECT department_name FROM departments WHERE department_id = %s", (department,))
-        department_name = query.fetchone()[0]
-
-        # fetch relevant courses
-        query.execute("""
-            SELECT c.course_id, c.course_name, c.category, c.hours
-            FROM courses AS c
-            WHERE c.department_id = %s
-        """, (department,))
-        courses = query.fetchall()
-
         print(f"\nWelcome to the Staff menu, {name}!")
         print("What would you like to do?")
         print("1. Apply for a course")
@@ -197,178 +484,63 @@ def staff_menu(user_id, name, department, staff_id):
         user_option = input("\nOption: ")
 
         if user_option == "1":
-            print(f"\nThese are the courses available for your department, {department_name}:")
-            for i, course in enumerate(courses, start=1):
-                print(f"{i}. {course[1]}, Category: {course[2]} Skills, Hours: {course[3]}")
-
-            course_selection = input("\nWhich course would you like to apply for? (Enter '0' to go back): ")
-
-            if course_selection == '0':
-                continue
-
-            try:
-                selected_course = courses[int(course_selection) - 1]
-                print(f"You have selected: {selected_course[1]}")
-
-                # check if staff has already attended the selected course
-                query.execute("""
-                        SELECT * FROM staffCourses 
-                        WHERE staff_id = %s AND course_id = %s AND attended = 'yes'
-                    """, (staff_id, selected_course[0]))
-                already_attended = query.fetchone()
-
-                if already_attended:
-                    print("You have already attended this course before, you will not be rewarded any hours even if "
-                          "you attend it again!")
-                    proceed = input("Would you still like to proceed? Y/N: ")
-                    if proceed.lower() != "y":
-                        continue
-                    else:
-                        # prompt staff for commencement date
-                        date_input = input("Enter the date you want to attend the course (YYYY-MM-DD): ")
-                        try:
-                            date = datetime.strptime(date_input, "%Y-%m-%d")
-                            success = apply_for_course(user_id, selected_course[0], date)
-                            if success:
-                                print(f"You have successfully applied for the course {selected_course[1]}, scheduled on {date}")
-                            else:
-                                print("Failed to apply for the course. Please try again.")
-                        except ValueError:
-                            print("Invalid date format. Please enter the date in YYYY-MM-DD format.")
-
-            except (ValueError, IndexError):
-                print("Invalid input. Please enter a valid number.")
-
+            apply_for_course(user_id, name, department, staff_id)
         elif user_option == "2":
-            try:
-                # fetch staff's applied courses from staffCourses table
-                query.execute("""
-                        SELECT c.course_name, c.category, c.hours, sc.date_enrolled, sc.attended, sc.course_id
-                        FROM staffCourses AS sc
-                        JOIN courses c ON sc.course_id = c.course_id
-                        WHERE sc.staff_id = %s
-                    """, (staff_id,))
-
-                applied_courses = query.fetchall()
-
-                if applied_courses:
-                    print("You have currently applied for these courses:")
-
-                    for i, course in enumerate(applied_courses, start=1):
-                        print(
-                            f"{i}. {course[0]}, Category: {course[1]} Skills, Hours: {course[2]}, Start Date: {course[3]}, Attended: {course[4]}")
-
-                    attend_course = input("\nWhich course would you like to attend? (Enter '0' to go back): ")
-
-                    if attend_course == '0':
-                        continue
-
-                    try:
-                        selected_index = int(attend_course)
-
-                        if 1 <= selected_index <= len(applied_courses):
-                            selected_course = applied_courses[selected_index - 1]
-                            print(f"You have selected: {selected_course[0]}")
-
-                            # check if course has already been attended
-                            if selected_course[4] == 'yes':
-                                print("You have already attended this course!")
-
-                            else:
-                                # update attended status to yes
-                                query.execute("""
-                                        UPDATE staffCourses 
-                                        SET attended = 'yes'
-                                        WHERE staff_id = %s AND course_id = %s
-                                    """, (staff_id, selected_course[5]))
-                                db.commit()
-                                print(f"You have successfully attended the course: {selected_course[0]}!")
-                        else:
-                            print("Invalid input. Please enter a valid number.")
-
-                    except ValueError:
-                        print("Invalid input. Please enter a valid number.")
-
-                else:
-                    print("You are not currently attending any courses.")
-
-            except Exception as e:
-                print(f"Error fetching applied courses: {e}")
-
+            attend_course(staff_id)
         elif user_option == "3":
-            try:
-                # fetch staff's attended courses with details
-                query.execute("""
-                        SELECT c.course_name, c.hours, c.category
-                        FROM staffCourses AS sc 
-                        JOIN courses c ON sc.course_id = c.course_id 
-                        WHERE sc.staff_id = %s AND sc.attended = 'yes'
-                    """, (staff_id,))
-                attended_courses = query.fetchall()
-
-                if attended_courses:
-                    # initialise sets to store UNIQUE core and soft skills
-                    unique_core_courses = set()
-                    unique_soft_courses = set()
-
-                    # initialise core and soft skill hours to 0
-                    total_core_hours = 0
-                    total_soft_hours = 0
-
-                    # iterate through attended courses to calculate the total hours for respective skill category
-                    for course in attended_courses:
-                        course_name, hours, category = course
-                        if course_name not in unique_core_courses and category == "Core":
-                            unique_core_courses.add(course_name)
-                            total_core_hours += hours
-                        elif course_name not in unique_soft_courses and category == "Soft":
-                            total_soft_hours += hours
-
-                    # print
-                    print("Your total training hours for the year are...")
-                    print(f"Core Skill Hours: {total_core_hours}")
-                    print(f"Soft Skill Hours: {total_soft_hours}")
-
-                else:
-                    print("You have not attended any courses yet!")
-
-            except Exception as e:
-                print(f"Error fetching attended courses: {e}")
-
+            view_hours(staff_id)
         elif user_option == "4":
             break
 
         else:
-            print("Invalid option.")
+            print("Invalid option!")
 
 
 def hrofficer_menu(user_id, name, officer_id, department):
-    print(f"\nWelcome to the HR Officer menu, {name}!")
-    print("What would you like to do?")
-    print("1. Adjust training hours")
-    print("2. Generate department report")
-    print("3. Generate staff report")
+    while True:
+        print(f"\nWelcome to the HR Officer menu, {name}!")
+        print("What would you like to do?")
+        print("1. Adjust training hours")
+        print("2. Generate department report")
+        print("3. Generate staff report")
+        print("4. Exit")
 
-    user_option = input("\nOption: ")
+        user_option = input("\nOption: ")
+        if user_option == "1":
+            adjust_training_hours()
+        elif user_option == "2":
+            print("")
+        elif user_option == "3":
+            print("")
+        elif user_option == "4":
+            break
+        else:
+            print("Invalid option!")
 
 
 def hrsupervisor_menu(user_id, name):
-    print(f"\nWelcome to the HR Supervisor menu, {name}")
-    print("What would you like to do?")
-    print("1. Manage HR Officers")
-    print("2. Adjust training hours")
-    print("3. Add new course")
-    print("4. Create new user account")
+    while True:
+        print(f"\nWelcome to the HR Supervisor menu, {name}")
+        print("What would you like to do?")
+        print("1. Manage HR Officers")
+        print("2. Adjust training hours")
+        print("3. Add new course")
+        print("4. Create new user account")
+        print("5. Exit")
 
-    user_option = input("\nOption: ")
-    if user_option == "1":
-        print("")
-    elif user_option == "2":
-        print("")
-    elif user_option == "3":
-        create_course()
-    elif user_option == "4":
-        create_account()
+        user_option = input("\nOption: ")
+        if user_option == "1":
+            print("")
+        elif user_option == "2":
+            adjust_training_hours()
+        elif user_option == "3":
+            create_course()
+        elif user_option == "4":
+            create_account()
+        elif user_option == "5":
+            break
+        else:
+            print("Invalid option!")
 
 
 def main():
