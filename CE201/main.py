@@ -108,9 +108,9 @@ def login():
         if role == "Staff":
             staff_menu(user_id, name, department, staff_id)
         elif role == "HR Officer":
-            hrofficer_menu(user_id, name, department)
+            hrofficer_menu(name)
         elif role == "HR Supervisor":
-            hrsupervisor_menu(user_id, name)
+            hrsupervisor_menu(name)
         else:
             print("Invalid role")
     else:
@@ -471,6 +471,218 @@ def adjust_training_hours():
             print("Invalid option!")
 
 
+def manage_staff():
+    while True:
+        print("\nWhat would you like to do?")
+        print("1. Manage HR Officers")
+        print("2. Manage Staff")
+        print("3. Exit")
+
+        user_option = input("\nOption: ")
+
+        # fetch all HR officers from db
+        query.execute("""
+              SELECT ho.officer_id, ho.name, d.department_name, u.role, ho.user_id, d.department_id
+              FROM hrofficers AS ho
+              JOIN departments AS d ON ho.department_id = d.department_id
+              JOIN users AS u ON ho.user_id = u.user_id
+          """)
+        officers = query.fetchall()
+
+        # fetch all departments from db
+        query.execute("SELECT department_id, department_name FROM departments")
+        departments = query.fetchall()
+
+        # fetch all staff from db
+        query.execute("""
+                   SELECT s.staff_id, s.name, s.user_id, d.department_name, u.role, d.department_id
+                   FROM staff AS s
+                   JOIN departments AS d ON s.department_id = d.department_id
+                   JOIN users AS u ON s.user_id = u.user_id    
+               """)
+        staffs = query.fetchall()
+
+        if user_option == "1":
+            try:
+                # display list of officers
+                print("\nList of HR Officers:")
+                for i, officer in enumerate(officers, start=1):
+                    print(
+                        f"{i}. {officer[1]} | Department: {officer[2]} | Role: {officer[3]}")
+
+                officer_selection = input("\nWhich HR Officer would you like to manage? (Enter '0' to go back) ")
+
+                if officer_selection == '0':
+                    return
+
+                # validate user input
+                try:
+                    officer_index = int(officer_selection) - 1
+                    if officer_index < 0 or officer_index >= len(officers):
+                        raise ValueError
+                except ValueError:
+                    print("Invalid input! Please enter a valid number.")
+                    return
+
+                selected_officer = officers[officer_index]
+
+                print("\n1. Change department")
+                print("2. Change role")
+                print("3. Exit")
+
+                choice_selection = input("\nWhat would you like to do next? (Enter '0' to go back) ")
+
+                if choice_selection == "0":
+                    return
+                elif choice_selection == "1":
+                    for j, department in enumerate(departments, start=1):
+                        print(f"{j}. {department[1]}")
+                    new_department_index = input("\nChoose new department: ")
+
+                    # validate user input
+                    try:
+                        new_department_index = int(new_department_index) - 1
+                        if new_department_index < 0 or new_department_index >= len(departments):
+                            raise ValueError
+                    except ValueError:
+                        print("Invalid input! Please enter a valid number.")
+                        return
+
+                    new_department_id = departments[new_department_index][0]
+
+                    # update hr officer with new department
+                    query.execute("""
+                            UPDATE hrofficers SET department_id = %s WHERE officer_id = %s
+                        """, (new_department_id, selected_officer[0]))
+                    db.commit()
+                    print(f"Successfully updated {selected_officer[1]}'s department!")
+
+                elif choice_selection == "2":
+                    # fetch the user_id of the selected HR officer
+                    user_id = selected_officer[4]
+
+                    print("\n1. Staff\n2. HR Officer")
+                    role_option = input("\nEnter role: ")
+                    role_mapping = {
+                        "1": "Staff",
+                        "2": "HR Officer",
+                    }
+                    new_role = role_mapping.get(role_option)
+                    if new_role is None:
+                        print("Invalid option!")
+                        return
+
+                    # update the role in the users table
+                    query.execute("UPDATE users SET role = %s WHERE user_id = %s", (new_role, user_id))
+                    db.commit()
+
+                    if new_role == "Staff":
+                        # insert user's data into the staff table
+                        query.execute("INSERT INTO staff (user_id, name, department_id) VALUES (%s, %s, %s)", (selected_officer[4], selected_officer[1], selected_officer[5]))
+                        db.commit()
+                        # delete user's data from previous role (hr officer)'s table
+                        query.execute("DELETE FROM hrofficers WHERE user_id = %s", (user_id,))
+                        db.commit()
+                        print(f"Successfully updated {selected_officer[1]}'s role to {new_role}!")
+
+                elif choice_selection == "3":
+                    return
+                else:
+                    print("Invalid option!")
+
+            except Exception as e:
+                print(f"Error managing HR Officers: {e}")
+
+        elif user_option == "2":
+            try:
+                # display list of staff
+                print("\nList of Staff:")
+                for i, staff in enumerate(staffs, start=1):
+                    print(f"{i}. {staff[1]} | Department: {staff[3]} | Role: {staff[4]}")
+
+                staff_selection = input("\nWhich staff would you like to manage? (Enter '0' to go back) ")
+
+                if staff_selection == '0':
+                    return
+
+                # validate user input
+                try:
+                    staff_index = int(staff_selection) - 1
+                    if staff_index < 0 or staff_index >= len(staffs):
+                        raise ValueError
+                except ValueError:
+                    print("Invalid input! Please enter a valid number.")
+                    return
+
+                selected_staff = staffs[staff_index]
+
+                print("\n1. Change department")
+                print("2. Change role")
+                print("3. Exit")
+
+                choice_selection = input("\nWhat would you like to do next? (Enter '0' to go back) ")
+
+                if choice_selection == "0":
+                    return
+                elif choice_selection == "1":
+                    for j, department in enumerate(departments, start=1):
+                        print(f"{j}. {department[1]}")
+                    new_department_index = input("\nChoose new department: ")
+
+                    # validate user input
+                    try:
+                        new_department_index = int(new_department_index) - 1
+                        if new_department_index < 0 or new_department_index >= len(departments):
+                            raise ValueError
+                    except ValueError:
+                        print("Invalid input! Please enter a valid number.")
+                        return
+
+                    new_department_id = departments[new_department_index][0]
+
+                    # update staff with new department
+                    query.execute("""
+                            UPDATE staff SET department_id = %s WHERE staff_id = %s
+                        """, (new_department_id, selected_staff[0]))
+                    db.commit()
+                    print(f"Successfully updated {selected_staff[1]}'s department!")
+
+                elif choice_selection == "2":
+                    # fetch the user_id of the selected staff
+                    user_id = selected_staff[2]
+
+                    print("1. Staff\n2. HR Officer")
+                    role_option = input("\nEnter role: ")
+                    role_mapping = {
+                        "1": "Staff",
+                        "2": "HR Officer",
+                    }
+                    new_role = role_mapping.get(role_option)
+                    if new_role is None:
+                        print("Invalid option!")
+                        return
+
+                    # update the role in the users table
+                    query.execute("UPDATE users SET role = %s WHERE user_id = %s", (new_role, user_id))
+                    db.commit()
+
+                    if new_role == "HR Officer":
+                        # insert user's data into the hrofficers table
+                        query.execute("INSERT INTO hrofficers (user_id, name, department_id) VALUES (%s, %s, %s)", (selected_staff[2], selected_staff[1], selected_staff[5]))
+                        db.commit()
+                        # delete user's data from previous role (hr officer)'s table
+                        query.execute("DELETE FROM staff WHERE user_id = %s", (user_id,))
+                        db.commit()
+                        print(f"Successfully updated {selected_staff[1]}'s role to {new_role}!")
+
+            except Exception as e:
+                print(f"Error managing Staff: {e}")
+        elif user_option == "3":
+            return
+        else:
+            print("Invalid option!")
+
+
 # role-specific menu functions
 def staff_menu(user_id, name, department, staff_id):
     while True:
@@ -491,12 +703,11 @@ def staff_menu(user_id, name, department, staff_id):
             view_hours(staff_id)
         elif user_option == "4":
             break
-
         else:
             print("Invalid option!")
 
 
-def hrofficer_menu(user_id, name, officer_id, department):
+def hrofficer_menu(name):
     while True:
         print(f"\nWelcome to the HR Officer menu, {name}!")
         print("What would you like to do?")
@@ -518,11 +729,11 @@ def hrofficer_menu(user_id, name, officer_id, department):
             print("Invalid option!")
 
 
-def hrsupervisor_menu(user_id, name):
+def hrsupervisor_menu(name):
     while True:
         print(f"\nWelcome to the HR Supervisor menu, {name}")
         print("What would you like to do?")
-        print("1. Manage HR Officers")
+        print("1. Manage Staff")
         print("2. Adjust training hours")
         print("3. Add new course")
         print("4. Create new user account")
@@ -530,7 +741,7 @@ def hrsupervisor_menu(user_id, name):
 
         user_option = input("\nOption: ")
         if user_option == "1":
-            print("")
+            manage_staff()
         elif user_option == "2":
             adjust_training_hours()
         elif user_option == "3":
