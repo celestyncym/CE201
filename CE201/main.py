@@ -20,7 +20,9 @@ else:
 
 def create_account():
     print("Create a new account ")
-    name = input("Enter your name: ")
+    name = input("Enter your name (Enter '0' to go back): ")
+    if name == '0':
+        return
     username = input("Enter username: ")
     password = input("Enter password: ")
     print("1. Staff\n2. HR Officer\n3. HR Supervisor")
@@ -155,19 +157,19 @@ def apply_for_course(user_id, name, department, staff_id):
             proceed = input("Would you still like to proceed? y/n: ")
             if proceed.lower() != "y":
                 return
-            else:
-                # prompt staff for commencement date
-                date_input = input("Enter the date you want to attend the course (YYYY-MM-DD): ")
-                try:
-                    date = datetime.strptime(date_input, "%Y-%m-%d")
-                    success = save_course_to_db(user_id, selected_course[0], date)
-                    if success:
-                        print(
-                            f"You have successfully applied for the course {selected_course[1]}, scheduled on {date}")
-                    else:
-                        print("Failed to apply for the course. Please try again.")
-                except ValueError:
-                    print("Invalid date format! Please enter the date in YYYY-MM-DD format.")
+        else:
+            # prompt staff for commencement date
+            date_input = input("Enter the date you want to attend the course (YYYY-MM-DD): ")
+            try:
+                date = datetime.strptime(date_input, "%Y-%m-%d")
+                success = save_course_to_db(user_id, selected_course[0], date)
+                if success:
+                    print(
+                        f"You have successfully applied for the course {selected_course[1]}, scheduled on {date}")
+                else:
+                    print("Failed to apply for the course. Please try again.")
+            except ValueError:
+                print("Invalid date format! Please enter the date in YYYY-MM-DD format.")
 
     except (ValueError, IndexError):
         print("Invalid input! Please enter a valid number.")
@@ -268,53 +270,214 @@ def view_hours(staff_id):
         attended_courses = query.fetchall()
 
         if attended_courses:
-            # initialise sets to store UNIQUE core and soft skills
-            unique_core_courses = set()
-            unique_soft_courses = set()
-
-            # initialise core and soft skill hours to 0
-            total_core_hours = 0
-            total_soft_hours = 0
+            # initialise dictionaries to store total hours and unique course names for each category
+            total_hours = {"Core": 0, "Soft": 0}
+            unique_courses = {"Core": set(), "Soft": set()}
 
             # iterate through attended courses to calculate the total hours for respective skill category
             for course in attended_courses:
                 course_name, hours, category = course
-                if course_name not in unique_core_courses and category == "Core":
-                    unique_core_courses.add(course_name)
-                    total_core_hours += hours
-                elif course_name not in unique_soft_courses and category == "Soft":
-                    unique_soft_courses.add(course_name)
-                    total_soft_hours += hours
+                unique_courses[category].add(course_name)
+                total_hours[category] += hours
 
-            # print
-            print("Your total training hours for the year are...")
-            print(f"Core Skills: {total_core_hours}")
-            print(f"Soft Skills: {total_soft_hours}")
-            print(f"\nTotal Hours Required: {total_hours_required}")
-            print(f"Current Ratio Split (Core/Soft): {default_core_ratio}/{default_soft_ratio}")
+            # print total training hours
+            print("The total training hours for the year are...")
+            for category, total in total_hours.items():
+                print(f"{category} Skills: {total}")
 
             # calculate remaining hours needed
-            remaining_core_hours = max(total_hours_required * (default_core_ratio / 100) - total_core_hours, 0)
-            remaining_soft_hours = max(total_hours_required * (default_soft_ratio / 100) - total_soft_hours, 0)
+            remaining_hours = {}
+            for category, total in total_hours.items():
+                remaining_hours[category] = max(total_hours_required * (default_ratios[category] / 100) - total, 0)
 
-            print(f"\nRemaining Core Skill Hours Needed: {remaining_core_hours}")
-            print(f"Remaining Soft Skill Hours Needed: {remaining_soft_hours}")
+            # print remaining hours needed
+            print(f"\nTotal Hours Required: {total_hours_required}")
+            print("Current Ratio Split (Core/Soft): {}/{}".format(default_core_ratio, default_soft_ratio))
+            print("\nRemaining Hours Needed:")
+            for category, remaining in remaining_hours.items():
+                print(f"{category} Skill Hours Needed: {remaining}")
+
+            # check if all hours are completed
+            if all(remaining_hours[category] == 0 for category in ["Core", "Soft"]):
+                print(f"\nTraining hours completed!")
 
             go_back = input("\nEnter '0' to go back: ")
-
             if go_back == '0':
                 return
-
         else:
-            print("You have not attended any courses yet!")
+            print("No courses attended yet!")
+
+            # print total training hours
+            print("\nThe total training hours for the year are...")
+            for category in ["Core", "Soft"]:
+                print(f"{category} Skills: 0")
+
+            # calculate and print remaining hours needed (based on default ratios)
+            print(f"\nTotal Hours Required: {total_hours_required}")
+            print("Current Ratio Split (Core/Soft): {}/{}\n".format(default_core_ratio, default_soft_ratio))
+            for category in ["Core", "Soft"]:
+                remaining = max(total_hours_required * (default_ratios[category] / 100), 0)
+                print(f"Remaining {category} Skill Hours Needed: {remaining}")
+
+            go_back = input("\nEnter '0' to go back: ")
+            if go_back == '0':
+                return
 
     except Exception as e:
         print(f"Error fetching attended courses: {e}")
 
 
+def generate_department_report():
+    try:
+        # fetch departments from db
+        query.execute("SELECT department_id, department_name FROM departments")
+        departments = query.fetchall()
+
+        for i, department in enumerate(departments, start=1):
+            print(f"{i}. {department[1]}")
+        department_index = input("\nChoose department: ")
+
+        # validate user input
+        try:
+            department_index = int(department_index) - 1
+            if department_index < 0 or department_index >= len(departments):
+                raise ValueError
+        except ValueError:
+            print("Invalid input! Please enter a valid number.")
+            return
+
+        selected_department_id = departments[department_index][0]
+        selected_department_name = departments[department_index][1]
+
+        # fetch staff from the selected department
+        query.execute("""
+            SELECT s.staff_id, s.name
+            FROM staff AS s
+            WHERE s.department_id = %s
+        """, (selected_department_id,))
+        department_staff = query.fetchall()
+
+        # print department staff list
+        print(f"\n{selected_department_name} Staff:")
+        for i, staff in enumerate(department_staff, start=1):
+            print(f"{i}. {staff[1]}")
+
+        # check and display hours for each staff member
+        print(f"\nReport of {selected_department_name} Department:")
+        for staff_id, staff_name in department_staff:
+            try:
+                # fetch staff's attended courses with details
+                query.execute("""
+                        SELECT c.course_name, c.hours, c.category
+                        FROM staffCourses AS sc 
+                        JOIN courses c ON sc.course_id = c.course_id 
+                        WHERE sc.staff_id = %s AND sc.attended = 'yes'
+                    """, (staff_id,))
+                attended_courses = query.fetchall()
+
+                if attended_courses:
+                    # initialise dictionaries to store total hours and UNIQUE course names
+                    total_hours = {"Core": 0, "Soft": 0}
+                    unique_courses = {"Core": set(), "Soft": set()}
+
+                    # iterate through attended courses to calculate the total hours for respective skill category
+                    for course_name, hours, category in attended_courses:
+                        unique_courses[category].add(course_name)
+                        total_hours[category] += hours
+
+                    # print total training hours
+                    print(f"\n{staff_name}'s Training Hours:")
+                    for category, total in total_hours.items():
+                        print(f"{category} Skills: {total}")
+
+                    # calculate and print remaining hours needed
+                    remaining_hours = {}
+                    for category, total in total_hours.items():
+                        remaining_hours[category] = max(total_hours_required * (default_ratios[category] / 100) - total,
+                                                        0)
+                    for category, remaining in remaining_hours.items():
+                        print(f"Remaining {category} Skill Hours Needed: {remaining}")
+
+                    # check if all hours are completed
+                    if all(remaining_hours[category] == 0 for category in ["Core", "Soft"]):
+                        print(f"{staff_name} has completed their training hours!")
+                else:
+                    print(f"\n{staff_name} has not attended any courses yet!")
+
+            except Exception as e:
+                print(f"Error fetching attended courses for {staff_name}: {e}")
+
+        go_back = input("\nEnter '0' to go back: ")
+        if go_back == '0':
+            return
+
+    except Exception as e:
+        print(f"Error generating department report: {e}")
+
+
+def generate_staff_report():
+    try:
+        # fetch departments from db
+        query.execute("SELECT department_id, department_name FROM departments")
+        departments = query.fetchall()
+
+        for i, department in enumerate(departments, start=1):
+            print(f"{i}. {department[1]}")
+        department_index = input("\nChoose department: ")
+
+        # validate user input
+        try:
+            department_index = int(department_index) - 1
+            if department_index < 0 or department_index >= len(departments):
+                raise ValueError
+        except ValueError:
+            print("Invalid input! Please enter a valid number.")
+            return
+
+        selected_department_id = departments[department_index][0]
+        selected_department_name = departments[department_index][1]
+
+        # fetch staff from the selected department
+        query.execute("""
+            SELECT s.staff_id, s.name
+            FROM staff AS s
+            WHERE s.department_id = %s
+        """, (selected_department_id,))
+        department_staff = query.fetchall()
+
+        # print department staff list
+        print(f"\n{selected_department_name} Staff:")
+        for i, staff in enumerate(department_staff, start=1):
+            print(f"{i}. {staff[1]}")
+
+        # let the user select a staff member to view their hours
+        staff_index = input("\nSelect staff member to view their hours: ")
+
+        # validate user input
+        try:
+            staff_index = int(staff_index) - 1
+            if staff_index < 0 or staff_index >= len(department_staff):
+                raise ValueError
+        except ValueError:
+            print("Invalid input! Please enter a valid number.")
+            return
+
+        selected_staff_id = department_staff[staff_index][0]
+        selected_staff_name = department_staff[staff_index][1]
+
+        # display the hours for the selected staff member using view_hours() function
+        print(f"\n{selected_staff_name}'s Report: ")
+        view_hours(selected_staff_id)
+
+    except Exception as e:
+        print(f"Error generating staff report: {e}")
+
+
 def create_course():
     print("Create a new course ")
-    name = input("Enter course name: ")
+    name = input("Enter course name (Enter '0' to go back): ")
+    if name == '0':
+        return
     category = input("Enter category (Core or Soft): ")
     hours = input("Enter hours: ")
     print("1. Human Resources\n2. Marketing\n3. Finance\n4. Customer Support\n5. Information Technology\n6. Operations")
@@ -345,6 +508,7 @@ def create_course():
 total_hours_required = 100
 default_core_ratio = 50
 default_soft_ratio = 50
+default_ratios = {"Core": default_core_ratio, "Soft": default_soft_ratio}
 
 
 def adjust_training_hours():
@@ -419,8 +583,12 @@ def adjust_training_hours():
                 print(f"Current Split Ratio: Core Skills: {default_core_ratio}, Soft Skills: {default_soft_ratio}")
 
                 # prompt user for new ratio
-                new_core_ratio = input("Enter the new ratio for Core Skills (between 0 and 100): ")
+                new_core_ratio = input(
+                    "Enter the new ratio for Core Skills (between 0 and 100) (Enter '0' to go back): ")
                 new_soft_ratio = 100 - int(new_core_ratio)
+
+                if new_core_ratio == '0':
+                    return
 
                 # validate input
                 try:
@@ -447,7 +615,10 @@ def adjust_training_hours():
                 print(f"Current Total Hours Required: {total_hours_required}")
 
                 # prompt for new total hours required
-                new_total_hours_required = input("Enter the new total hours required: ")
+                new_total_hours_required = input("Enter the new total hours required (Enter '0' to go back): ")
+
+                if new_total_hours_required == '0':
+                    return
 
                 # validate input
                 try:
@@ -578,7 +749,8 @@ def manage_staff():
 
                     if new_role == "Staff":
                         # insert user's data into the staff table
-                        query.execute("INSERT INTO staff (user_id, name, department_id) VALUES (%s, %s, %s)", (selected_officer[4], selected_officer[1], selected_officer[5]))
+                        query.execute("INSERT INTO staff (user_id, name, department_id) VALUES (%s, %s, %s)",
+                                      (selected_officer[4], selected_officer[1], selected_officer[5]))
                         db.commit()
                         # delete user's data from previous role (hr officer)'s table
                         query.execute("DELETE FROM hrofficers WHERE user_id = %s", (user_id,))
@@ -668,7 +840,8 @@ def manage_staff():
 
                     if new_role == "HR Officer":
                         # insert user's data into the hrofficers table
-                        query.execute("INSERT INTO hrofficers (user_id, name, department_id) VALUES (%s, %s, %s)", (selected_staff[2], selected_staff[1], selected_staff[5]))
+                        query.execute("INSERT INTO hrofficers (user_id, name, department_id) VALUES (%s, %s, %s)",
+                                      (selected_staff[2], selected_staff[1], selected_staff[5]))
                         db.commit()
                         # delete user's data from previous role (hr officer)'s table
                         query.execute("DELETE FROM staff WHERE user_id = %s", (user_id,))
@@ -720,9 +893,9 @@ def hrofficer_menu(name):
         if user_option == "1":
             adjust_training_hours()
         elif user_option == "2":
-            print("")
+            generate_department_report()
         elif user_option == "3":
-            print("")
+            generate_staff_report()
         elif user_option == "4":
             break
         else:
@@ -763,11 +936,7 @@ def main():
         print("3. HR Supervisor")
 
         user_option = input("Option: ")
-        if user_option == "1":
-            login()
-        elif user_option == "2":
-            login()
-        elif user_option == "3":
+        if user_option == "1" or user_option == "2" or user_option == "3":
             login()
         else:
             print("Invalid option.")
