@@ -708,7 +708,6 @@ def manage_staff():
 
                 print("\n1. Change department")
                 print("2. Change role")
-                print("3. Exit")
 
                 choice_selection = input("\nWhat would you like to do next? (Enter '0' to go back) ")
 
@@ -765,9 +764,6 @@ def manage_staff():
                         query.execute("DELETE FROM hrofficers WHERE user_id = %s", (user_id,))
                         db.commit()
                         print(f"Successfully updated {selected_officer[1]}'s role to {new_role}!")
-
-                elif choice_selection == "3":
-                    return
                 else:
                     print("Invalid option!")
 
@@ -799,7 +795,6 @@ def manage_staff():
 
                 print("\n1. Change department")
                 print("2. Change role")
-                print("3. Exit")
 
                 choice_selection = input("\nWhat would you like to do next? (Enter '0' to go back) ")
 
