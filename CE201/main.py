@@ -478,7 +478,16 @@ def create_course():
     name = input("Enter course name (Enter '0' to go back): ")
     if name == '0':
         return
-    category = input("Enter category (Core or Soft): ")
+    print("1. Core\n2. Soft")
+    category_option = input("Choose category: ")
+    category_mapping = {
+        "1": "Core",
+        "2": "Soft"
+    }
+    category = category_mapping.get(category_option)
+    if category is None:
+        print("Invalid option!")
+        return
     hours = input("Enter hours: ")
     print("1. Human Resources\n2. Marketing\n3. Finance\n4. Customer Support\n5. Information Technology\n6. Operations")
     department = input("\nEnter department: ")
