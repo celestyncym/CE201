@@ -252,7 +252,7 @@ def attend_course(staff_id):
                 print("Invalid input! Please enter a valid number.")
 
         else:
-            print("You are not currently attending any courses!")
+            print("You have not applied to any courses!")
 
     except Exception as e:
         print(f"Error fetching applied courses: {e}")
